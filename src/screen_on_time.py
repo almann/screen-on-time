@@ -134,16 +134,14 @@ def main():
 
     # output statistics
     print("\nStatistics:")
-    print(
-        "{:.2f}%/h battery loss during usage".format(
-            total_consumption_with_display_on / (total_time_with_display_on / 3600)
-        )
-    )
-    print(
-        "{:.2f}%/h battery loss during sleep".format(
-            total_consumption_with_display_off / (total_time_with_display_off / 3600)
-        )
-    )
+    rate_with_display_on = 0.0
+    if total_time_with_display_on > 0:
+        rate_with_display_on = total_consumption_with_display_on / (total_time_with_display_on / 3600)
+    print("{:.2f}%/h battery loss during usage".format(rate_with_display_on))
+    rate_with_display_off = 0.0
+    if total_time_with_display_off > 0:
+        rate_with_display_off = total_consumption_with_display_off / (total_time_with_display_off / 3600)
+    print("{:.2f}%/h battery loss during sleep".format(rate_with_display_off))
 
 
 def get_pmset_log():
