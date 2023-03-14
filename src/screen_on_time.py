@@ -15,8 +15,7 @@ from datetime import datetime
 TIMESTAMP_REGEX = r"(?P<timestamp>\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2})\s[+-]\d{4}"
 
 
-def main():
-    pmset_lines = get_pmset_log().splitlines()
+def process_lines(pmset_lines):
     start_index = start_charge = start_timestamp = start_display_state = None
     charge_regex = re.compile(
         TIMESTAMP_REGEX
@@ -49,7 +48,7 @@ def main():
 
     charge_events = [
         (convert_timestamp(match[0]), int(match[-1]))
-        for match in charge_regex.findall("\n".join(pmset_lines[start_index - 1 :]))
+        for match in charge_regex.findall("\n".join(pmset_lines[start_index - 1:]))
     ]
 
     current_display_state = start_display_state
@@ -70,8 +69,8 @@ def main():
             duration = (new_timestamp - last_display_switch).total_seconds()
             current_display_state = new_display_state
             consumption = (
-                get_closest_event(charge_events, last_display_switch)[1]
-                - get_closest_event(charge_events, new_timestamp)[1]
+                    get_closest_event(charge_events, last_display_switch)[1]
+                    - get_closest_event(charge_events, new_timestamp)[1]
             )
             if duration > 300:
                 # only emit messages for states lasting longer than a few minutes
@@ -96,7 +95,7 @@ def main():
     # we assume that this script is only run manually, so the screen must be on now
     duration = (datetime.now() - last_display_switch).total_seconds()
     consumption = (
-        get_closest_event(charge_events, last_display_switch)[1] - get_current_charge()
+            get_closest_event(charge_events, last_display_switch)[1] - get_current_charge()
     )
     total_consumption_with_display_on += consumption
     total_time_with_display_on += duration
@@ -142,6 +141,20 @@ def main():
     if total_time_with_display_off > 0:
         rate_with_display_off = total_consumption_with_display_off / (total_time_with_display_off / 3600)
     print("{:.2f}%/h battery loss during sleep".format(rate_with_display_off))
+
+
+def main():
+    if len(sys.argv) > 2:
+        print(f"USAGE: {sys.argv[0]} [FILE]", file=sys.stderr)
+        sys.exit(2)
+
+    if len(sys.argv) == 1:
+        pmset_lines = get_pmset_log().splitlines()
+    else:
+        # read log from a file
+        with open(sys.argv[1], mode='r', encoding="utf-8") as f:
+            pmset_lines = f.readlines()
+    process_lines(pmset_lines)
 
 
 def get_pmset_log():
