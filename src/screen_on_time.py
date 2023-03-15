@@ -25,14 +25,28 @@ def process_lines(pmset_lines):
         TIMESTAMP_REGEX + r"\s+\w+\s+Display is turned (?P<state>\w+)"
     )
 
+    seen_batt = False
+    end_index = len(pmset_lines)
     for i, line in enumerate(reversed(pmset_lines)):
         match = charge_regex.match(line)
-        if match and match.groupdict()["type"] == "AC":
-            groupdict = match.groupdict()
-            start_index = len(pmset_lines) - i
-            start_charge = int(groupdict["charge"])
-            start_timestamp = convert_timestamp(groupdict["timestamp"])
+        if not match:
+            continue
+        charge_type = match["type"]
+
+        # if we're currently on AC, we will report on usage statistics up until we plugged in
+        if not seen_batt and charge_type == "AC":
+            end_index = len(pmset_lines) - i - 1
+
+        # if we've seen some battery entries we the AC event indicates the transition from plugged to unplugged
+        if seen_batt and charge_type == "AC":
             break
+
+        # remember the last battery record as it might be the battery event when unplugged
+        if charge_type != "AC":
+            start_index = len(pmset_lines) - i
+            start_charge = int(match["charge"])
+            start_timestamp = convert_timestamp(match["timestamp"])
+            seen_batt = True
     else:
         print("Could not determine when the PC was last unplugged from AC.")
         sys.exit(1)
@@ -58,7 +72,7 @@ def process_lines(pmset_lines):
     total_consumption_with_display_on = 0
     total_consumption_with_display_off = 0
 
-    for line in pmset_lines[start_index:]:
+    for line in pmset_lines[start_index:end_index]:
         display_match = display_regex.match(line)
         if display_match:
             groupdict = display_match.groupdict()
@@ -92,22 +106,24 @@ def process_lines(pmset_lines):
                 total_time_with_display_on += duration
             last_display_switch = new_timestamp
 
-    # we assume that this script is only run manually, so the screen must be on now
-    duration = (datetime.now() - last_display_switch).total_seconds()
-    consumption = (
-            get_closest_event(charge_events, last_display_switch)[1] - get_current_charge()
-    )
-    total_consumption_with_display_on += consumption
-    total_time_with_display_on += duration
-    print(
-        "{} to {}: Used {:>3}% of battery during {:>3}h {:>2}min of usage".format(
-            last_display_switch.strftime("%Y-%m-%d %H:%M:%S"),
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            consumption,
-            int(duration / 3600),
-            int(duration % 3600 / 60),
+    # if we're currently on battery , we need to measure time from last event
+    if end_index == len(pmset_lines):
+        # we assume that this script is only run manually, so the screen must be on now
+        duration = (datetime.now() - last_display_switch).total_seconds()
+        consumption = (
+                get_closest_event(charge_events, last_display_switch)[1] - get_current_charge()
         )
-    )
+        total_consumption_with_display_on += consumption
+        total_time_with_display_on += duration
+        print(
+            "{} to {}: Used {:>3}% of battery during {:>3}h {:>2}min of usage".format(
+                last_display_switch.strftime("%Y-%m-%d %H:%M:%S"),
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                consumption,
+                int(duration / 3600),
+                int(duration % 3600 / 60),
+            )
+        )
 
     # output summary
     print("\nSummary:")
